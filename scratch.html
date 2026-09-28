@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scratch 樂譜轉換助手</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8; 
+        }
+        .playing-highlight {
+            background-color: #fef08a !important; /* Tailwind Yellow-200 */
+            transition: background-color 0.1s;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6 text-gray-800">
+
+    <header class="max-w-6xl mx-auto mb-6 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-indigo-600 flex items-center gap-3 justify-center md:justify-start">
+                <i class="fa-solid fa-music"></i> Scratch 樂譜轉換助手
+            </h1>
+            <p class="text-gray-500 mt-1">上傳圖片對照，快速輸入音階與拍子數值，自動生成清單。</p>
+        </div>
+        <div class="flex gap-2">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">60 = 中央 Do</span>
+            <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">1 = 一拍, 0.5 = 半拍</span>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-140px)] min-h-[600px]">
+        
+        <!-- Left Panel: Image Viewer -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden h-full">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-2 justify-between items-center">
+                <h2 class="font-semibold text-gray-700"><i class="fa-regular fa-image mr-2"></i>樂譜圖片預覽</h2>
+                <div class="flex gap-2">
+                    <button id="aiDetectBtn" class="hidden bg-purple-100 text-purple-700 hover:bg-purple-200 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center shadow-sm">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 自動辨識
+                    </button>
+                    <label for="imageUpload" class="cursor-pointer bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
+                        <i class="fa-solid fa-upload mr-1"></i> 上傳圖片
+                    </label>
+                    <input type="file" id="imageUpload" accept="image/*" class="hidden">
+                </div>
+            </div>
+            
+            <div id="imageContainer" class="flex-1 overflow-auto bg-gray-100 flex items-center justify-center relative p-4">
+                <div id="uploadPrompt" class="text-gray-400 text-center pointer-events-none">
+                    <i class="fa-solid fa-file-image text-4xl mb-2"></i>
+                    <p>點擊上方按鈕上傳樂譜圖片</p>
+                </div>
+                <!-- Image will be injected here -->
+                <img id="previewImage" src="" alt="樂譜預覽" class="hidden max-w-none shadow-sm border border-gray-200 rounded">
+            </div>
+            
+            <!-- Zoom Controls -->
+            <div class="p-2 border-t border-gray-100 bg-gray-50 flex justify-center gap-4">
+                <button id="zoomOutBtn" class="text-gray-500 hover:text-gray-800 p-2"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+                <span id="zoomLevel" class="text-sm font-medium text-gray-600 flex items-center">100%</span>
+                <button id="zoomInBtn" class="text-gray-500 hover:text-gray-800 p-2"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+            </div>
+        </div>
+
+        <!-- Right Panel: Data Entry -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+            <!-- Input Area -->
+            <div class="p-5 border-b border-gray-100 bg-indigo-50/30">
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">音階數字 (Pitch)</label>
+                        <input type="number" id="pitchInput" placeholder="例如: 60" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-lg font-semibold placeholder:font-normal placeholder:text-gray-400">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">拍子數字 (Beat)</label>
+                        <input type="number" id="beatInput" placeholder="例如: 1 或 0.5" step="0.25" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-lg font-semibold placeholder:font-normal placeholder:text-gray-400">
+                    </div>
+                </div>
+                <button id="addBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl transition shadow-sm active:transform active:scale-95">
+                    <i class="fa-solid fa-plus mr-1"></i> 加入清單 (Enter)
+                </button>
+            </div>
+
+            <!-- List Area -->
+            <div class="flex-1 overflow-y-auto p-4 bg-gray-50" id="listContainer">
+                <div id="emptyState" class="h-full flex flex-col items-center justify-center text-gray-400">
+                    <i class="fa-solid fa-list-ul text-3xl mb-2"></i>
+                    <p class="text-sm">尚未輸入任何音符</p>
+                </div>
+                <ul id="noteList" class="space-y-2 hidden">
+                    <!-- Note items will be injected here -->
+                </ul>
+            </div>
+
+            <!-- Actions Area -->
+            <div class="p-4 border-t border-gray-100 bg-white grid grid-cols-2 gap-3">
+                <button id="playBtn" class="bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-medium transition shadow-sm flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> 試聽旋律
+                </button>
+                <button id="exportBtn" class="bg-gray-800 hover:bg-gray-900 text-white py-3 rounded-xl font-medium transition shadow-sm flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-download"></i> 匯出 CSV
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- AI Loading Overlay -->
+    <div id="aiLoading" class="fixed inset-0 bg-white/90 backdrop-blur-sm hidden flex-col items-center justify-center z-[60]">
+        <i class="fa-solid fa-circle-notch fa-spin text-5xl text-purple-600 mb-4"></i>
+        <h3 class="text-xl font-bold text-gray-800 mb-1">AI 正在努力看譜中...</h3>
+        <p class="text-gray-500">這大約需要幾秒鐘的時間，請稍候。</p>
+    </div>
+
+    <!-- Modal Message Box (Replacement for alert) -->
+    <div id="messageModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 opacity-0 transition-opacity">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 transform scale-95 transition-transform" id="messageModalContent">
+            <h3 id="messageTitle" class="text-lg font-bold text-gray-900 mb-2">提示</h3>
+            <p id="messageText" class="text-gray-600 mb-6">這是一則訊息。</p>
+            <div class="flex justify-end">
+                <button id="closeModalBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium transition">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 載入外部的設定檔 -->
+    <script src="config.js"></script>
+
+    <script>
+        // App State
+        let notes = [];
+        let currentZoom = 1;
+        let isPlaying = false;
+        let transportScheduleIds = [];
+        let uploadedImageBase64 = "";
+        let uploadedImageMimeType = "";
+
+        // DOM Elements
+        const imageUpload = document.getElementById('imageUpload');
+        const previewImage = document.getElementById('previewImage');
+        const uploadPrompt = document.getElementById('uploadPrompt');
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
+        const zoomLevelText = document.getElementById('zoomLevel');
+        const imageContainer = document.getElementById('imageContainer');
+
+        const pitchInput = document.getElementById('pitchInput');
+        const beatInput = document.getElementById('beatInput');
+        const addBtn = document.getElementById('addBtn');
+        const noteList = document.getElementById('noteList');
+        const emptyState = document.getElementById('emptyState');
+        const listContainer = document.getElementById('listContainer');
+        
+        const playBtn = document.getElementById('playBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        
+        const aiDetectBtn = document.getElementById('aiDetectBtn');
+        const aiLoading = document.getElementById('aiLoading');
+
+        const messageModal = document.getElementById('messageModal');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageText = document.getElementById('messageText');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+
+        // Setup Tone.js Synthesizer (Using a softer triangle wave for Scratch-like sound)
+        const synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.02, decay: 0.1, sustain: 0.3, release: 1 }
+        }).toDestination();
+        
+        // Let's set a default tempo (Scratch default is often 60 BPM, making 1 beat = 1 second)
+        // 120 BPM makes 1 beat = 0.5s. We'll set it to 120 so it's not too slow.
+        Tone.Transport.bpm.value = 120;
+
+        // --- Custom Alert System ---
+        function showMessage(title, text) {
+            messageTitle.textContent = title;
+            messageText.textContent = text;
+            messageModal.classList.remove('hidden');
+            // Small delay to allow display:block to apply before animating opacity
+            setTimeout(() => {
+                messageModal.classList.remove('opacity-0');
+                document.getElementById('messageModalContent').classList.remove('scale-95');
+            }, 10);
+        }
+
+        closeModalBtn.addEventListener('click', () => {
+            messageModal.classList.add('opacity-0');
+            document.getElementById('messageModalContent').classList.add('scale-95');
+            setTimeout(() => {
+                messageModal.classList.add('hidden');
+            }, 200); // match transition duration
+        });
+
+
+        // --- Image Viewer Logic ---
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                uploadedImageMimeType = file.type;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    previewImage.src = event.target.result;
+                    // 取出 base64 的原始資料 (去掉前綴)
+                    uploadedImageBase64 = event.target.result.split(',')[1];
+                    previewImage.classList.remove('hidden');
+                    uploadPrompt.classList.add('hidden');
+                    aiDetectBtn.classList.remove('hidden'); // 顯示 AI 辨識按鈕
+                    // Reset zoom
+                    currentZoom = 1;
+                    updateZoom();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function updateZoom() {
+            previewImage.style.transform = `scale(${currentZoom})`;
+            previewImage.style.transformOrigin = 'top left';
+            zoomLevelText.textContent = `${Math.round(currentZoom * 100)}%`;
+        }
+
+        zoomInBtn.addEventListener('click', () => {
+            if(currentZoom < 3) {
+                currentZoom += 0.2;
+                updateZoom();
+            }
+        });
+
+        zoomOutBtn.addEventListener('click', () => {
+            if(currentZoom > 0.4) {
+                currentZoom -= 0.2;
+                updateZoom();
+            }
+        });
+
+        // Make image draggable for panning
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
+
+        imageContainer.addEventListener('mousedown', (e) => {
+            if (e.target !== previewImage) return;
+            isDragging = true;
+            imageContainer.classList.add('cursor-grab');
+            startX = e.pageX - imageContainer.offsetLeft;
+            startY = e.pageY - imageContainer.offsetTop;
+            scrollLeft = imageContainer.scrollLeft;
+            scrollTop = imageContainer.scrollTop;
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            imageContainer.classList.remove('cursor-grab');
+        });
+
+        imageContainer.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const x = e.pageX - imageContainer.offsetLeft;
+            const y = e.pageY - imageContainer.offsetTop;
+            const walkX = (x - startX) * 2; // scroll speed multiplier
+            const walkY = (y - startY) * 2;
+            imageContainer.scrollLeft = scrollLeft - walkX;
+            imageContainer.scrollTop = scrollTop - walkY;
+        });
+
+
+        // --- Data Entry Logic ---
+        function addNote() {
+            const pitchVal = pitchInput.value.trim();
+            const beatVal = beatInput.value.trim();
+
+            if (!pitchVal || !beatVal) {
+                showMessage('輸入錯誤', '請確認音階與拍子都有填寫數字。');
+                return;
+            }
+
+            const pitch = parseFloat(pitchVal);
+            const beat = parseFloat(beatVal);
+
+            // Add to array
+            notes.push({ id: Date.now(), pitch, beat });
+            
+            // Render list
+            renderNotes();
+
+            // UX Improvement: Keep focus on pitch, preselect text so they can just type over
+            pitchInput.focus();
+            pitchInput.select();
+        }
+
+        addBtn.addEventListener('click', addNote);
+
+        // Keyboard Shortcut: Enter in beat input triggers Add
+        beatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addNote();
+            }
+        });
+        pitchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                beatInput.focus();
+                beatInput.select();
+            }
+        });
+
+        function removeNote(id) {
+            notes = notes.filter(n => n.id !== id);
+            renderNotes();
+        }
+
+        // --- 新增的編輯功能 ---
+        function editNote(id) {
+            // 找到被點擊的那個音符，將它標記為「編輯中」
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                note.isEditing = true;
+                renderNotes();
+            }
+        }
+
+        function saveNote(id) {
+            // 找到該音符，抓取輸入框的新數值並儲存
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                const pitchVal = document.getElementById(`edit-pitch-${id}`).value;
+                const beatVal = document.getElementById(`edit-beat-${id}`).value;
+                note.pitch = parseFloat(pitchVal) || 0;
+                note.beat = parseFloat(beatVal) || 0;
+                note.isEditing = false; // 解除編輯模式
+                renderNotes();
+            }
+        }
+
+        function renderNotes() {
+            if (notes.length === 0) {
+                emptyState.classList.remove('hidden');
+                noteList.classList.add('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                noteList.classList.remove('hidden');
+                
+                noteList.innerHTML = notes.map((note, index) => {
+                    // 如果該音符處於「編輯模式」
+                    if (note.isEditing) {
+                        return `
+                        <li id="note-item-${index}" class="bg-indigo-50 border border-indigo-300 rounded-lg p-3 flex justify-between items-center transition-colors shadow-sm">
+                            <div class="flex items-center gap-2 w-full">
+                                <span class="text-indigo-400 font-mono w-6 text-sm">${index + 1}.</span>
+                                <div class="flex flex-col md:flex-row gap-3 flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-xs text-indigo-800 font-bold">音階:</label>
+                                        <input type="number" id="edit-pitch-${note.id}" value="${note.pitch}" class="w-20 px-2 py-1 rounded border border-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-indigo-700">
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-xs text-indigo-800 font-bold">拍子:</label>
+                                        <input type="number" step="0.25" id="edit-beat-${note.id}" value="${note.beat}" class="w-20 px-2 py-1 rounded border border-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-800">
+                                    </div>
+                                </div>
+                            </div>
+                            <button onclick="saveNote(${note.id})" class="text-emerald-600 hover:text-emerald-800 bg-emerald-100 hover:bg-emerald-200 p-2 rounded-lg transition flex-shrink-0 ml-2" title="儲存修改">
+                                <i class="fa-solid fa-check text-lg"></i>
+                            </button>
+                        </li>
+                        `;
+                    }
+                    
+                    // 正常的顯示模式
+                    return `
+                        <li id="note-item-${index}" class="bg-white border border-gray-200 rounded-lg p-3 flex justify-between items-center transition-colors">
+                            <div class="flex items-center gap-4">
+                                <span class="text-gray-400 font-mono w-6 text-sm">${index + 1}.</span>
+                                <div class="flex flex-col md:flex-row gap-1 md:gap-4">
+                                    <span class="font-bold text-indigo-700">音階: ${note.pitch}</span>
+                                    <span class="text-gray-600">拍子: ${note.beat}</span>
+                                </div>
+                            </div>
+                            <div class="flex gap-1 flex-shrink-0">
+                                <button onclick="editNote(${note.id})" class="text-blue-500 hover:text-blue-700 p-2 rounded hover:bg-blue-50 transition" title="編輯">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                <button onclick="removeNote(${note.id})" class="text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition" title="刪除">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </li>
+                    `;
+                }).join('');
+
+                // Scroll to bottom automatically
+                listContainer.scrollTop = listContainer.scrollHeight;
+            }
+        }
+
+
+        // --- Audio Playback Logic ---
+        async function stopPlayback() {
+            Tone.Transport.stop();
+            Tone.Transport.cancel(0); // clear all events
+            synth.releaseAll();
+            
+            // Remove highlights
+            document.querySelectorAll('li[id^="note-item-"]').forEach(el => {
+                el.classList.remove('playing-highlight');
+            });
+            
+            isPlaying = false;
+            playBtn.innerHTML = '<i class="fa-solid fa-play"></i> 試聽旋律';
+            playBtn.classList.replace('bg-orange-500', 'bg-emerald-500');
+            playBtn.classList.replace('hover:bg-orange-600', 'hover:bg-emerald-600');
+        }
+
+        async function togglePlayback() {
+            if (notes.length === 0) {
+                showMessage('無法播放', '清單中沒有音符，請先輸入資料。');
+                return;
+            }
+
+            if (isPlaying) {
+                stopPlayback();
+                return;
+            }
+
+            // Start Playback
+            await Tone.start();
+            isPlaying = true;
+            playBtn.innerHTML = '<i class="fa-solid fa-stop"></i> 停止播放';
+            playBtn.classList.replace('bg-emerald-500', 'bg-orange-500');
+            playBtn.classList.replace('hover:bg-emerald-600', 'hover:bg-orange-600');
+
+            let timeOffset = 0; // Current time cursor in seconds
+            
+            // Assume 1 Beat = 0.5 seconds (Tempo = 120 BPM)
+            const beatDurationInSeconds = 60 / Tone.Transport.bpm.value;
+
+            notes.forEach((note, index) => {
+                const duration = note.beat * beatDurationInSeconds;
+                
+                Tone.Transport.schedule((time) => {
+                    // Visual highlight
+                    Tone.Draw.schedule(() => {
+                        // Remove previous highlights
+                        document.querySelectorAll('li[id^="note-item-"]').forEach(el => {
+                            el.classList.remove('playing-highlight');
+                        });
+                        // Add current highlight
+                        const activeEl = document.getElementById(`note-item-${index}`);
+                        if(activeEl) {
+                            activeEl.classList.add('playing-highlight');
+                            // Auto scroll to active element
+                            activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }
+                    }, time);
+
+                    // Play Sound (0 means rest, so only trigger if pitch > 0)
+                    if (note.pitch > 0) {
+                        // Convert MIDI note to Frequency
+                        const freq = Tone.Frequency(note.pitch, "midi");
+                        // Subtract a tiny amount to leave a slight gap between consecutive identical notes
+                        synth.triggerAttackRelease(freq, duration - 0.05, time);
+                    }
+                }, timeOffset);
+
+                timeOffset += duration;
+            });
+
+            // Schedule stop event at the end
+            Tone.Transport.schedule((time) => {
+                Tone.Draw.schedule(() => {
+                    stopPlayback();
+                }, time);
+            }, timeOffset);
+
+            Tone.Transport.start();
+        }
+
+        playBtn.addEventListener('click', togglePlayback);
+
+
+        // --- AI Recognition Logic (Gemini API) ---
+        async function fetchWithRetry(url, options, retries = 3, delay = 1000) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok && retries > 0) {
+                    await new Promise(res => setTimeout(res, delay));
+                    return fetchWithRetry(url, options, retries - 1, delay * 2);
+                }
+                return response;
+            } catch (error) {
+                if (retries > 0) {
+                    await new Promise(res => setTimeout(res, delay));
+                    return fetchWithRetry(url, options, retries - 1, delay * 2);
+                }
+                throw error;
+            }
+        }
+
+        aiDetectBtn.addEventListener('click', async () => {
+            if (!uploadedImageBase64) return;
+            
+            // --- API Key 安全檢查邏輯 ---
+            let apiKey = "";
+            // 如果本地端有 config.js 且有填寫，就自動讀取
+            if (typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY && CONFIG.GEMINI_API_KEY !== "在此填入您的 API Key") {
+                apiKey = CONFIG.GEMINI_API_KEY;
+            } else {
+                // 如果是在 GitHub 上 (沒有 config.js)，就請使用者臨時輸入
+                apiKey = prompt("請輸入您的 Gemini API Key 來啟用 AI 辨識：\n(此金鑰僅會暫存於您的瀏覽器，重新整理就會消失，絕對安全)");
+                if (!apiKey) return; // 使用者如果按取消，就停止執行
+            }
+
+            aiLoading.classList.remove('hidden');
+            aiLoading.classList.add('flex');
+            
+            try {
+                // 提供給 AI 的精確規則指示
+                const prompt = `這是一張樂譜（簡譜）。請幫我將上面的音符轉換為 Scratch 可用的陣列數值。
+轉換規則如下，請嚴格遵守：
+1. 音階 (Pitch)：1對應60, 2對應62, 3對應64, 4對應65, 5對應67, 6對應69, 7對應71。如果是高音 (例如數字上面有一點，如高音1)，則加12 (高音1為72, 高音2為74)。0 為休止符。
+2. 節拍 (Beat)：單純一個數字為 1 拍；數字下方有一條底線為 0.5 拍；數字後方每多一個減號 '-' 代表延長一拍(總共2拍)。
+請從頭到尾依序讀取所有音符。回傳必須為 JSON 陣列。`;
+
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inlineData: {
+                                        mimeType: uploadedImageMimeType || "image/png",
+                                        data: uploadedImageBase64
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    // 強制 AI 以結構化的 JSON 格式回傳，方便程式直接讀取
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    "pitch": { "type": "NUMBER" },
+                                    "beat": { "type": "NUMBER" }
+                                },
+                                "propertyOrdering": ["pitch", "beat"]
+                            }
+                        }
+                    }
+                };
+
+                // 使用取得的 API Key
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    const parsedNotes = JSON.parse(jsonString);
+                    
+                    if (Array.isArray(parsedNotes) && parsedNotes.length > 0) {
+                        notes = parsedNotes.map(n => ({
+                            id: Date.now() + Math.random(),
+                            pitch: Number(n.pitch),
+                            beat: Number(n.beat)
+                        }));
+                        renderNotes();
+                        showMessage('辨識完成', `AI 已成功辨識出 ${notes.length} 個音符！您可以點擊「試聽旋律」來確認。請注意，AI 辨識可能會有微小誤差，請聽聽看是否有需要手動在清單中微調的地方。`);
+                    } else {
+                        showMessage('辨識失敗', 'AI 無法從圖片中找到有效的樂譜資料，請嘗試其他圖片。');
+                    }
+                } else {
+                    showMessage('API 錯誤', '回傳資料格式不正確，請稍後再試。');
+                }
+            } catch (error) {
+                console.error("AI 辨識發生錯誤", error);
+                showMessage('發生錯誤', '無法連線或辨識失敗，請稍後再試。');
+            } finally {
+                aiLoading.classList.add('hidden');
+                aiLoading.classList.remove('flex');
+            }
+        });
+
+
+        // --- Export / Copy Logic ---
+        exportBtn.addEventListener('click', () => {
+            if (notes.length === 0) {
+                showMessage('無法匯出', '清單中沒有任何資料可以匯出。');
+                return;
+            }
+
+            // 將資料轉換為 Scratch 支援的單行 CSV 格式 (一行一個數值)
+            const pitchContent = notes.map(n => n.pitch).join('\n');
+            const beatContent = notes.map(n => n.beat).join('\n');
+
+            // 建立下載檔案的通用函數
+            const downloadCSV = (content, fileName) => {
+                // 建立包含 CSV 內容的 Blob 物件
+                const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                
+                // 建立一個隱藏的 <a> 標籤來觸發下載
+                const link = document.createElement('a');
+                link.setAttribute('href', url);
+                link.setAttribute('download', fileName);
+                link.style.visibility = 'hidden';
+                
+                document.body.appendChild(link);
+                link.click(); // 模擬點擊
+                document.body.removeChild(link); // 下載後移除標籤
+                URL.revokeObjectURL(url); // 釋放記憶體
+            };
+
+            try {
+                // 1. 下載音階檔案
+                downloadCSV(pitchContent, 'music.csv');
+                
+                // 2. 稍微延遲 0.5 秒後下載拍子檔案 (避免瀏覽器阻擋多重下載)
+                setTimeout(() => {
+                    downloadCSV(beatContent, 'beat.csv');
+                    showMessage('匯出成功！', '已成功下載 music.csv 與 beat.csv。請到您的「下載」資料夾查看，並可直接對著 Scratch 的清單點擊右鍵「匯入」。');
+                }, 500);
+                
+            } catch (err) {
+                console.error("下載失敗", err);
+                showMessage('匯出失敗', '您的瀏覽器可能阻擋了自動下載，請確認權限設定。');
+            }
+        });
+
+    </script>
+</body>
+</html>
